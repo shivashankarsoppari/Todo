@@ -22,6 +22,13 @@
         .subtitle { margin: 8px 0 28px; color: #6b7280; }
         .composer, .todo-list { overflow: hidden; border: 1px solid #e5e7eb; border-radius: 16px; background: #fff; box-shadow: 0 12px 36px #1f29370c; }
         .composer { padding: 18px; }
+        .auth-panel { padding: 18px; border: 1px solid #e5e7eb; border-radius: 16px; background: #fff; box-shadow: 0 12px 36px #1f29370c; }
+        .auth-panel h2 { margin: 0 0 14px; font-size: 18px; }
+        .auth-panel input { margin-bottom: 10px; padding: 12px 14px; }
+        .auth-actions { display: flex; gap: 8px; }
+        .secondary { padding: 11px 16px; background: #e9eaff; color: #4338ca; }
+        #app-content[hidden], #auth-panel[hidden] { display: none; }
+        .session-toolbar { display: flex; justify-content: flex-end; margin: 0 0 14px; }
         input, textarea { width: 100%; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; color: inherit; font: inherit; outline: none; }
         input:focus, textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 3px #6366f122; }
         #title { padding: 13px 14px; font-weight: 600; }
@@ -62,6 +69,27 @@
     <h1>Today</h1>
     <p class="subtitle">Make room for what matters.</p>
 
+    <section class="auth-panel" id="auth-panel">
+        <h2>Sign in or create an account</h2>
+        <form id="auth-form">
+            <input id="username" name="username" minlength="3" maxlength="50" pattern="[A-Za-z0-9._-]+"
+                   placeholder="Username" autocomplete="username" required>
+            <input id="password" name="password" type="password" minlength="12" maxlength="72"
+                   placeholder="Password (at least 12 characters)" autocomplete="current-password" required>
+            <div class="form-footer">
+                <span id="auth-status" role="status" aria-live="polite"></span>
+                <div class="auth-actions">
+                    <button class="secondary" id="register-button" type="button">Create account</button>
+                    <button class="primary" type="submit">Sign in</button>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <section id="app-content" hidden>
+    <div class="session-toolbar">
+        <button class="icon-button" id="logout-button" type="button">Sign out</button>
+    </div>
     <form class="composer" id="todo-form">
         <input id="title" name="title" maxlength="200" placeholder="What needs to get done?" required autocomplete="off">
         <textarea id="description" name="description" maxlength="2000" placeholder="Add a note (optional)"></textarea>
@@ -80,8 +108,15 @@
         <span id="count"></span>
     </div>
     <section class="todo-list" id="todo-list" aria-label="Todo list"></section>
+    </section>
 </main>
 <script>
+    const authForm = document.querySelector("#auth-form");
+    const authPanel = document.querySelector("#auth-panel");
+    const authStatus = document.querySelector("#auth-status");
+    const appContent = document.querySelector("#app-content");
+    const usernameInput = document.querySelector("#username");
+    const passwordInput = document.querySelector("#password");
     const form = document.querySelector("#todo-form");
     const titleInput = document.querySelector("#title");
     const descriptionInput = document.querySelector("#description");
@@ -91,6 +126,8 @@
     const count = document.querySelector("#count");
     const environmentLabel = document.querySelector("#environment");
     const apiBase = "/todo/api/todos";
+    const authBase = "/todo/api/auth";
+    let token = sessionStorage.getItem("todo-token");
     let todos = [];
     let filter = "all";
     let editingId = null;
@@ -98,7 +135,11 @@
     async function request(path, options = {}) {
         const response = await fetch(`${apiBase}${path}`, {
             ...options,
-            headers: { "Content-Type": "application/json", ...options.headers }
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+                ...options.headers
+            }
         });
         if (!response.ok) {
             const problem = await response.json().catch(() => null);
@@ -175,6 +216,26 @@
         render();
     }
 
+    async function authenticate(path) {
+        authStatus.textContent = "";
+        const response = await fetch(`${authBase}/${path}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: usernameInput.value, password: passwordInput.value })
+        });
+        if (!response.ok) {
+            const problem = await response.json().catch(() => null);
+            throw new Error(problem?.detail || problem?.message || `Request failed (${response.status})`);
+        }
+        const result = await response.json();
+        token = result.token;
+        sessionStorage.setItem("todo-token", token);
+        authPanel.hidden = true;
+        appContent.hidden = false;
+        passwordInput.value = "";
+        await loadTodos();
+    }
+
     async function loadEnvironment() {
         const response = await fetch("api/environment");
         if (!response.ok) {
@@ -245,7 +306,39 @@
         });
     });
 
-    loadTodos().catch(showError);
+    authForm.addEventListener("submit", event => {
+        event.preventDefault();
+        authenticate("login").catch(error => {
+            authStatus.textContent = error.message;
+        });
+    });
+
+    document.querySelector("#register-button").addEventListener("click", () => {
+        authenticate("register").catch(error => {
+            authStatus.textContent = error.message;
+        });
+    });
+
+    document.querySelector("#logout-button").addEventListener("click", () => {
+        sessionStorage.removeItem("todo-token");
+        token = null;
+        todos = [];
+        render();
+        appContent.hidden = true;
+        authPanel.hidden = false;
+    });
+
+    if (token) {
+        authPanel.hidden = true;
+        appContent.hidden = false;
+        loadTodos().catch(error => {
+            sessionStorage.removeItem("todo-token");
+            token = null;
+            appContent.hidden = true;
+            authPanel.hidden = false;
+            authStatus.textContent = error.message;
+        });
+    }
     loadEnvironment().catch(() => {
         environmentLabel.textContent = "Environment: unavailable";
     });
