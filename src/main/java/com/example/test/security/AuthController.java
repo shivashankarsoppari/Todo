@@ -1,7 +1,9 @@
 package com.example.test.security;
 
 import jakarta.validation.Valid;
+import java.security.Principal;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,12 +22,17 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthRequests.TokenResponse register(@Valid @RequestBody AuthRequests.Credentials credentials) {
-        return authService.register(credentials);
+    public AuthRequests.TokenResponse register(@Valid @RequestBody AuthRequests.Registration registration) {
+        return authService.register(registration);
     }
 
     @PostMapping("/login")
     public AuthRequests.TokenResponse login(@Valid @RequestBody AuthRequests.Credentials credentials) {
         return authService.login(credentials);
+    }
+
+    @GetMapping("/me")
+    public AuthRequests.UserProfile currentUser(Principal principal) {
+        return new AuthRequests.UserProfile(principal.getName());
     }
 }

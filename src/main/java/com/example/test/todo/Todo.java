@@ -1,10 +1,15 @@
 package com.example.test.todo;
 
+import com.example.test.security.User;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -27,6 +32,11 @@ public class Todo {
     @Column(nullable = false)
     private boolean completed;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User owner;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -36,13 +46,17 @@ public class Todo {
     protected Todo() {
     }
 
-    public Todo(String title, String description) {
+    public Todo(String title, String description, User owner) {
         this.title = title;
         this.description = description;
+        this.owner = owner;
     }
 
     @PrePersist
     void onCreate() {
+        if (owner == null) {
+            throw new IllegalStateException("Todo owner is required");
+        }
         LocalDateTime now = LocalDateTime.now();
         createdAt = now;
         updatedAt = now;

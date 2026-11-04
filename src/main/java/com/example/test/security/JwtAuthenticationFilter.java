@@ -40,7 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         new UsernamePasswordAuthenticationToken(
                                 username, null, AuthorityUtils.createAuthorityList("ROLE_USER")));
             } catch (JwtException | IllegalArgumentException exception) {
-                SecurityContextHolder.clearContext();
+                 SecurityContextHolder.clearContext();
                 logger.warn("Request rejected: invalid or expired bearer token");
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired bearer token");
                 return;

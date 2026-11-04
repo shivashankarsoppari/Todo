@@ -1,25 +1,24 @@
 package com.example.test.security;
 
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 @Service
-public class UserAccountDetailsService implements UserDetailsService {
+public class AppUserDetailsService implements UserDetailsService {
 
-    private final UserAccountRepository accounts;
+    private final UserRepository accounts;
 
-    public UserAccountDetailsService(UserAccountRepository accounts) {
+    public AppUserDetailsService(UserRepository accounts) {
         this.accounts = accounts;
     }
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        UserAccount account = accounts.findByUsername(username)
+        com.example.test.security.User account = accounts.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-        return User.withUsername(account.getUsername())
+        return org.springframework.security.core.userdetails.User.withUsername(account.getUsername())
                 .password(account.getPasswordHash())
                 .roles("USER")
                 .build();

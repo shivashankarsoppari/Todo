@@ -1,5 +1,6 @@
 package com.example.test.security;
 
+import java.time.LocalDateTime;
 import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,12 +14,12 @@ public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
-    private final UserAccountRepository accounts;
+    private final UserRepository accounts;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
     public AuthService(
-            UserAccountRepository accounts,
+            UserRepository accounts,
             PasswordEncoder passwordEncoder,
             JwtService jwtService) {
         this.accounts = accounts;
@@ -27,25 +28,30 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthRequests.TokenResponse register(AuthRequests.Credentials credentials) {
-        String username = normalize(credentials.username());
+    public AuthRequests.TokenResponse register(AuthRequests.Registration registration) {
+        String username = normalize(registration.username());
         if (accounts.existsByUsername(username)) {
             logger.warn("Account registration rejected: username already exists ({})", username);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username is already registered");
         }
-        accounts.save(new UserAccount(username, passwordEncoder.encode(credentials.password())));
+        accounts.save(new User(
+                username,
+                passwordEncoder.encode(registration.password()),
+                registration.email(),
+                registration.mobileNumber()));
         logger.info("Account registered ({})", username);
         return tokenFor(username);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthRequests.TokenResponse login(AuthRequests.Credentials credentials) {
         String username = normalize(credentials.username());
-        UserAccount account = accounts.findByUsername(username).orElse(null);
+        User account = accounts.findByUsername(username).orElse(null);
         if (account == null || !passwordEncoder.matches(credentials.password(), account.getPasswordHash())) {
             logger.warn("Login rejected: invalid credentials for username ({})", username);
             throw invalidCredentials();
         }
+        account.recordLogin(LocalDateTime.now());
         logger.info("Login successful ({})", username);
         return tokenFor(username);
     }

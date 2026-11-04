@@ -1,5 +1,7 @@
 package com.example.test.todo;
 
+import com.example.test.security.User;
+import com.example.test.security.UserRepository;
 import java.util.List;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -10,44 +12,48 @@ import org.springframework.web.server.ResponseStatusException;
 public class TodoService {
 
     private final TodoRepository repository;
+    private final UserRepository userRepository;
 
-    public TodoService(TodoRepository repository) {
+    public TodoService(TodoRepository repository, UserRepository userRepository) {
         this.repository = repository;
+        this.userRepository = userRepository;
     }
 
-    public List<Todo> listTodos() {
-        return repository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    public List<Todo> listTodos(String username) {
+        return repository.findAllByOwner_Username(username, Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
-    public Todo getTodo(Long id) {
-        return findTodo(id);
+    public Todo getTodo(String username, Long id) {
+        return findTodo(username, id);
     }
 
-    public Todo createTodo(String title, String description) {
+    public Todo createTodo(String username, String title, String description) {
         validate(title, description);
-        return repository.save(new Todo(title.trim(), normalizeDescription(description)));
+        User owner = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+        return repository.save(new Todo(title.trim(), normalizeDescription(description), owner));
     }
 
-    public Todo updateTodo(Long id, String title, String description) {
+    public Todo updateTodo(String username, Long id, String title, String description) {
         validate(title, description);
-        Todo todo = findTodo(id);
+        Todo todo = findTodo(username, id);
         todo.setTitle(title.trim());
         todo.setDescription(normalizeDescription(description));
         return repository.save(todo);
     }
 
-    public Todo setCompletion(Long id, boolean completed) {
-        Todo todo = findTodo(id);
+    public Todo setCompletion(String username, Long id, boolean completed) {
+        Todo todo = findTodo(username, id);
         todo.setCompleted(completed);
         return repository.save(todo);
     }
 
-    public void deleteTodo(Long id) {
-        repository.delete(findTodo(id));
+    public void deleteTodo(String username, Long id) {
+        repository.delete(findTodo(username, id));
     }
 
-    private Todo findTodo(Long id) {
-        return repository.findById(id)
+    private Todo findTodo(String username, Long id) {
+        return repository.findByIdAndOwner_Username(id, username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todo not found"));
     }
 
