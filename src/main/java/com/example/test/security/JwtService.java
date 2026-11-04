@@ -77,4 +77,8 @@ public class JwtService {
     public long expirationSeconds() {
         return expiration.toSeconds();
     }
+
+    public Duration expirationDuration() {
+        return expiration;
+    }
 }

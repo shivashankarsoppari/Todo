@@ -13,7 +13,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.test.security.UserAccount;
 import com.example.test.security.UserAccountRepository;
+import com.example.test.security.JwtTokenStore;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -24,7 +28,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:todo-tests;DB_CLOSE_DELAY=-1",
@@ -51,10 +61,27 @@ class TodoControllerTests {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @MockitoBean
+    private JwtTokenStore jwtTokenStore;
+
+    private Map<String, String> issuedTokens;
     private String authToken;
 
     @BeforeEach
     void registerTestUser() throws Exception {
+        issuedTokens = new ConcurrentHashMap<>();
+        doAnswer(invocation -> {
+            issuedTokens.put(invocation.getArgument(0), invocation.getArgument(1));
+            return null;
+        }).when(jwtTokenStore).store(anyString(), anyString(), any(Duration.class));
+        doAnswer(invocation -> {
+            issuedTokens.remove(invocation.getArgument(0));
+            return null;
+        }).when(jwtTokenStore).delete(anyString());
+        when(jwtTokenStore.contains(anyString(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(1).equals(
+                        issuedTokens.get(invocation.getArgument(0))));
+
         String response = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -81,6 +108,14 @@ class TodoControllerTests {
 
         long id = objectMapper.readTree(created).get("id").asLong();
 
+        mockMvc.perform(get("/api/todos/{id}", id).header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Buy milk"));
+
+        mockMvc.perform(get("/api/todos").header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Buy milk"));
+
         mockMvc.perform(put("/api/todos/{id}", id)
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -90,6 +125,10 @@ class TodoControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Buy groceries"))
                 .andExpect(jsonPath("$.description").doesNotExist());
+
+        mockMvc.perform(get("/api/todos").header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Buy groceries"));
 
         mockMvc.perform(patch("/api/todos/{id}", id)
                         .header("Authorization", bearerToken())
@@ -127,6 +166,24 @@ class TodoControllerTests {
         mockMvc.perform(get("/api/todos"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/todos").header("Authorization", "Bearer invalid-token"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsSignedTokensNotPresentInTokenStore() throws Exception {
+        issuedTokens.clear();
+
+        mockMvc.perform(get("/api/todos").header("Authorization", bearerToken()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void logoutDeletesThePresentedTokenFromStore() throws Exception {
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", bearerToken()))
+                .andExpect(status().isNoContent());
+
+        verify(jwtTokenStore).delete(authToken);
+        mockMvc.perform(get("/api/todos").header("Authorization", bearerToken()))
                 .andExpect(status().isUnauthorized());
     }
 

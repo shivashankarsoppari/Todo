@@ -21,9 +21,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     private final JwtService jwtService;
+    private final JwtTokenStore jwtTokenStore;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    public JwtAuthenticationFilter(JwtService jwtService, JwtTokenStore jwtTokenStore) {
         this.jwtService = jwtService;
+        this.jwtTokenStore = jwtTokenStore;
     }
 
     @Override
@@ -35,7 +37,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authorization != null && authorization.startsWith("Bearer ")) {
             try {
-                String username = jwtService.usernameFrom(authorization.substring(7));
+                String token = authorization.substring(7);
+                String username = jwtService.usernameFrom(token);
+                if (!jwtTokenStore.contains(token, username)) {
+                    throw new JwtException("Token is expired or revoked");
+                }
                 SecurityContextHolder.getContext().setAuthentication(
                         new UsernamePasswordAuthenticationToken(
                                 username, null, AuthorityUtils.createAuthorityList("ROLE_USER")));

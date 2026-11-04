@@ -319,7 +319,20 @@
         });
     });
 
-    document.querySelector("#logout-button").addEventListener("click", () => {
+    document.querySelector("#logout-button").addEventListener("click", async () => {
+        status.textContent = "";
+        try {
+            const response = await fetch(`${authBase}/logout`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                throw new Error(`Sign out failed (${response.status})`);
+            }
+        } catch (error) {
+            showError(error);
+            return;
+        }
         sessionStorage.removeItem("todo-token");
         token = null;
         todos = [];

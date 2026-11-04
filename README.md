@@ -34,6 +34,29 @@ The app listens on port `9090` with the `/todo` context path. The todo UI is at
 `http://localhost:9090/todo/`; the REST API is under
 `http://localhost:9090/todo/api/todos`.
 
+## Redis token store
+
+Issued JWTs are registered in external Redis for their configured token lifetime.
+Requests must have both a valid JWT signature and a matching Redis entry; tokens
+missing from Redis are rejected. Redis stores a SHA-256 fingerprint of each token,
+not the bearer token itself. Configure the Redis connection with `REDIS_HOST`,
+`REDIS_PORT`, `REDIS_USERNAME`, and `REDIS_PASSWORD`, or set Spring Boot's
+`SPRING_DATA_REDIS_URL` (for example, `rediss://user:password@redis.example.com:6379`).
+For TLS with host and port settings, use `REDIS_SSL_ENABLED=true`:
+
+```powershell
+$env:REDIS_HOST = "your-redis-host"
+$env:REDIS_PORT = "6379"
+$env:REDIS_USERNAME = "your-redis-username"
+$env:REDIS_PASSWORD = "your-redis-password"
+$env:REDIS_SSL_ENABLED = "true"
+$env:REDIS_JWT_KEY_PREFIX = "todo-app:jwt:"
+```
+
+Redis must be reachable to issue or authenticate tokens. Todo data is not
+cached; todo endpoints always read and write through the database. Keep Redis
+credentials out of source control.
+
 ## Authentication
 
 Create an account or sign in through the UI. Usernames are case-insensitive;
@@ -44,10 +67,11 @@ and login endpoints return a short-lived JWT (15 minutes by default):
 ```text
 POST /todo/api/auth/register
 POST /todo/api/auth/login
+POST /todo/api/auth/logout
 ```
 
 Send the returned token as `Authorization: Bearer <token>` when calling the
-todo REST API or MCP endpoint. The browser UI keeps the token in session storage
+todo REST API or MCP endpoint. Signing out revokes the token in Redis. The browser UI keeps the token in session storage
 and provides a sign-out action. Configure the signing lifetime with
 `app.jwt.expiration` (for example, `PT30M`).
 

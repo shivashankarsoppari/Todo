@@ -16,14 +16,17 @@ public class AuthService {
     private final UserAccountRepository accounts;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final JwtTokenStore jwtTokenStore;
 
     public AuthService(
             UserAccountRepository accounts,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService) {
+            JwtService jwtService,
+            JwtTokenStore jwtTokenStore) {
         this.accounts = accounts;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.jwtTokenStore = jwtTokenStore;
     }
 
     @Transactional
@@ -51,8 +54,14 @@ public class AuthService {
     }
 
     private AuthRequests.TokenResponse tokenFor(String username) {
-        return new AuthRequests.TokenResponse(
-                jwtService.createToken(username), "Bearer", jwtService.expirationSeconds());
+        String token = jwtService.createToken(username);
+        jwtTokenStore.store(token, username, jwtService.expirationDuration());
+        return new AuthRequests.TokenResponse(token, "Bearer", jwtService.expirationSeconds());
+    }
+
+    public void logout(String token) {
+        jwtService.usernameFrom(token);
+        jwtTokenStore.delete(token);
     }
 
     private static String normalize(String username) {
