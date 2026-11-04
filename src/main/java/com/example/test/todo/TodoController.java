@@ -3,6 +3,7 @@ package com.example.test.todo;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -26,35 +27,39 @@ public class TodoController {
 
     @GetMapping
     public List<Todo> list() {
-        return todoService.listTodos();
+        return todoService.listTodos(currentUsername());
     }
 
     @GetMapping("/{id}")
     public Todo get(@PathVariable Long id) {
-        return todoService.getTodo(id);
+        return todoService.getTodo(currentUsername(), id);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Todo create(@Valid @RequestBody TodoRequests.SaveTodo request) {
-        return todoService.createTodo(request.title(), request.description());
+        return todoService.createTodo(currentUsername(), request.title(), request.description());
     }
 
     @PutMapping("/{id}")
     public Todo update(@PathVariable Long id, @Valid @RequestBody TodoRequests.SaveTodo request) {
-        return todoService.updateTodo(id, request.title(), request.description());
+        return todoService.updateTodo(currentUsername(), id, request.title(), request.description());
     }
 
     @PatchMapping("/{id}")
     public Todo setCompletion(
             @PathVariable Long id,
             @Valid @RequestBody TodoRequests.SetCompletion request) {
-        return todoService.setCompletion(id, request.completed());
+        return todoService.setCompletion(currentUsername(), id, request.completed());
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
-        todoService.deleteTodo(id);
+        todoService.deleteTodo(currentUsername(), id);
+    }
+
+    private String currentUsername() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }

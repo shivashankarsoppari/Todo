@@ -11,9 +11,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.example.test.security.UserAccount;
-import com.example.test.security.UserAccountRepository;
+import com.example.test.security.User;
+import com.example.test.security.UserRepository;
 import java.util.Arrays;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -23,6 +24,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,12 +50,17 @@ class TodoControllerTests {
     private ToolCallbackProvider todoToolCallbackProvider;
 
     @Autowired
-    private UserAccountRepository userAccountRepository;
+    private UserRepository userRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
 
     private String authToken;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     void registerTestUser() throws Exception {
@@ -112,6 +121,63 @@ class TodoControllerTests {
     }
 
     @Test
+    void onlyShowsAndAllowsAccessToTheAuthenticatedUsersTodos() throws Exception {
+        String created = mockMvc.perform(post("/api/todos")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Private task","description":"Owned by first user"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long todoId = objectMapper.readTree(created).get("id").asLong();
+
+        String secondTokenResponse = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"second-user","password":"another-strong-password"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String secondToken = objectMapper.readTree(secondTokenResponse).get("token").asText();
+
+        mockMvc.perform(post("/api/todos")
+                        .header("Authorization", "Bearer " + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Second user's task","description":""}
+                                """))
+                .andExpect(status().isCreated());
+        mockMvc.perform(get("/api/todos").header("Authorization", "Bearer " + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].title").value("Second user's task"));
+        mockMvc.perform(get("/api/todos/{id}", todoId).header("Authorization", "Bearer " + secondToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(patch("/api/todos/{id}", todoId)
+                        .header("Authorization", "Bearer " + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"completed":true}
+                                """))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/todos/{id}", todoId)
+                        .header("Authorization", "Bearer " + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Stolen task","description":""}
+                                """))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/todos/{id}", todoId).header("Authorization", "Bearer " + secondToken))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/todos/{id}", todoId).header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Private task"));
+    }
+
+    @Test
     void rejectsBlankTodoTitle() throws Exception {
         mockMvc.perform(post("/api/todos")
                         .header("Authorization", bearerToken())
@@ -131,12 +197,24 @@ class TodoControllerTests {
     }
 
     @Test
+    void showsTheAuthenticatedUsernameAndProtectsCurrentUserEndpoint() throws Exception {
+        mockMvc.perform(get("/api/auth/me").header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("test-user"));
+
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void registersAndAuthenticatesWithoutStoringPlaintextPassword() throws Exception {
-        UserAccount account = userAccountRepository.findByUsername("test-user").orElseThrow();
+        User account = userRepository.findByUsername("test-user").orElseThrow();
         org.assertj.core.api.Assertions.assertThat(account.getPasswordHash())
                 .isNotEqualTo("a-strong-test-password");
         org.assertj.core.api.Assertions.assertThat(passwordEncoder.matches(
                 "a-strong-test-password", account.getPasswordHash())).isTrue();
+        org.assertj.core.api.Assertions.assertThat(account.getCreatedAt()).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(account.getLastLoginAt()).isNull();
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -146,6 +224,7 @@ class TodoControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isNotEmpty())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"));
+        org.assertj.core.api.Assertions.assertThat(account.getLastLoginAt()).isNotNull();
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -153,6 +232,26 @@ class TodoControllerTests {
                                 {"username":"test-user","password":"wrong-password"}
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void registersOptionalContactDetails() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username":"contact-user",
+                                  "password":"a-strong-test-password",
+                                  "email":"  contact@example.com ",
+                                  "mobileNumber":" +12345678901 "
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        User account = userRepository.findByUsername("contact-user").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(account.getEmail()).isEqualTo("contact@example.com");
+        org.assertj.core.api.Assertions.assertThat(account.getMobileNumber()).isEqualTo("+12345678901");
+        org.assertj.core.api.Assertions.assertThat(account.getCreatedAt()).isNotNull();
     }
 
     @Test
@@ -187,6 +286,9 @@ class TodoControllerTests {
 
     @Test
     void mcpToolsOperateOnTodoService() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "test-user", null, AuthorityUtils.createAuthorityList("ROLE_USER")));
         ToolCallback[] callbacks = todoToolCallbackProvider.getToolCallbacks();
         String created = tool(callbacks, "createTodo")
                 .call("""
