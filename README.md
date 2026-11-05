@@ -30,9 +30,9 @@ $env:JWT_SECRET = [Convert]::ToBase64String($jwtBytes)
 `JWT_SECRET` must be base64 for at least 32 random bytes; keep it private and
 use the same key across instances. Use HTTPS outside local development.
 
-The app listens on port `9090` with the `/todo` context path. The todo UI is at
-`http://localhost:9090/todo/`; the REST API is under
-`http://localhost:9090/todo/api/todos`.
+The app listens on port `8080` with the `/todo` context path. The todo UI is at
+`http://localhost:8080/todo/`; the REST API is under
+`http://localhost:8080/todo/api/todos`.
 
 ## Authentication
 
@@ -50,6 +50,29 @@ Send the returned token as `Authorization: Bearer <token>` when calling the
 todo REST API or MCP endpoint. The browser UI keeps the token in session storage
 and provides a sign-out action. Configure the signing lifetime with
 `app.jwt.expiration` (for example, `PT30M`).
+
+## Todo completion email
+
+When a todo changes from active to complete, the app publishes a
+`TodoCompletedEvent` to Kafka after the database transaction commits. A Kafka
+consumer sends a notification to the configured mailbox; completing an already
+completed todo does not send another notification.
+
+Configure Kafka and SMTP before using notifications:
+
+```powershell
+$env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+$env:TODO_NOTIFICATION_EMAIL = "recipient@example.com"
+$env:MAIL_FROM = "todos@example.com"
+$env:SMTP_HOST = "smtp.example.com"
+$env:SMTP_PORT = "587"
+$env:SMTP_USERNAME = "your-smtp-username"
+$env:SMTP_PASSWORD = "your-smtp-password"
+```
+
+The topic defaults to `todo-completed` and can be changed with
+`TODO_COMPLETED_TOPIC`. Email credentials and addresses should be configured
+through environment variables, not committed to source control.
 
 ## Profiles
 
@@ -122,7 +145,7 @@ The Spring AI MCP server uses the Streamable HTTP transport. Connect an MCP
 client to:
 
 ```text
-http://localhost:9090/todo/mcp
+http://localhost:8080/todo/mcp
 ```
 
 It exposes `listTodos`, `getTodo`, `createTodo`, `updateTodo`,

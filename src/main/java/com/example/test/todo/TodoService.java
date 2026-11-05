@@ -1,11 +1,14 @@
 package com.example.test.todo;
 
+import com.example.test.kafka.TodoCompletedEvent;
 import com.example.test.security.User;
 import com.example.test.security.UserRepository;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -13,10 +16,15 @@ public class TodoService {
 
     private final TodoRepository repository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public TodoService(TodoRepository repository, UserRepository userRepository) {
+    public TodoService(
+            TodoRepository repository,
+            UserRepository userRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.repository = repository;
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     public List<Todo> listTodos(String username) {
@@ -42,10 +50,17 @@ public class TodoService {
         return repository.save(todo);
     }
 
+    @Transactional
     public Todo setCompletion(String username, Long id, boolean completed) {
         Todo todo = findTodo(username, id);
+        boolean newlyCompleted = completed && !todo.isCompleted();
         todo.setCompleted(completed);
-        return repository.save(todo);
+        Todo saved = repository.save(todo);
+        if (newlyCompleted) {
+            eventPublisher.publishEvent(
+                    new TodoCompletedEvent(id, saved.getTitle(), saved.getDescription(), username));
+        }
+        return saved;
     }
 
     public void deleteTodo(String username, Long id) {
