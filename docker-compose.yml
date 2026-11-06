@@ -2,7 +2,7 @@ services:
   todo-app:
     image: todo-app:latest
     build: .
-    container_name: todo-app
+    container_name: todo-app-container
     ports:
       - "9090:9090"
     environment:
