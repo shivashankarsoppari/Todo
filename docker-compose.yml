@@ -1,0 +1,12 @@
+services:
+  todo-app:
+    image: todo-app:latest
+    build: .
+    container_name: todo-app
+    ports:
+      - "9090:9090"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1521/xe
+      DB_USERNAME: c##app_user
+    restart: unless-stopped
