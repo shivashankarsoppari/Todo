@@ -146,8 +146,9 @@
     const count = document.querySelector("#count");
     const environmentLabel = document.querySelector("#environment");
     const sessionUsername = document.querySelector("#session-username");
-    const apiBase = "/todo/api/todos";
-    const authBase = "/todo/api/auth";
+    const appPath = window.location.pathname.replace(/\/todos\.html$/, "").replace(/\/$/, "");
+    const apiBase = `${appPath}/api/todos`;
+    const authBase = `${appPath}/api/auth`;
     let token = sessionStorage.getItem("todo-token");
     let todos = [];
     let filter = "all";
@@ -278,7 +279,7 @@
     }
 
     async function loadEnvironment() {
-        const response = await fetch("api/environment");
+        const response = await fetch(`${appPath}/api/environment`);
         if (!response.ok) {
             throw new Error(`Environment request failed (${response.status})`);
         }

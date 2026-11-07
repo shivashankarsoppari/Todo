@@ -1,12 +1,51 @@
 services:
+  oracle:
+    image: gvenzl/oracle-xe:21
+    container_name: oracle-xe
+    ports:
+      - "1522:1521"
+    environment:
+      ORACLE_PASSWORD: system
+      APP_USER: app_user
+      APP_USER_PASSWORD: app_user
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
   todo-app:
     image: todo-app:latest
     build: .
-    container_name: todo-app-container
+    container_name: todo-app
     ports:
       - "9090:9090"
     environment:
-      SPRING_PROFILES_ACTIVE: dev
-      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1521/xe
-      DB_USERNAME: c##app_user
+      SPRING_PROFILES_ACTIVE: uat
+      DB_URL: jdbc:oracle:thin:@//oracle:1521/XEPDB1
+      DB_USERNAME: app_user
+      DB_PASSWORD: app_user
+    depends_on:
+      oracle:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  oracle-data:
+
+#services:
+#  todo-app:
+#    image: todo-app:latest
+#    build: .
+#    container_name: todo-app
+#    ports:
+#      - "9090:9090"
+#    environment:
+#      SPRING_PROFILES_ACTIVE: dev
+#      DB_URL: jdbc:oracle:thin:@//host.docker.internal:1521/xe
+#      DB_USERNAME: c##app_user
+#    restart: unless-stopped
