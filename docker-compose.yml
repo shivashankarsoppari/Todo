@@ -5,9 +5,9 @@
       ports:
         - "1522:1521"
       environment:
-        ORACLE_PASSWORD: "{ORACLE_PASSWORD}"
-        APP_USER: "{DB_USERNAME}"
-        APP_USER_PASSWORD: "{DB_PASSWORD}"
+        ORACLE_PASSWORD: "${ORACLE_PASSWORD}"
+        APP_USER: "${DB_USERNAME}"
+        APP_USER_PASSWORD: "${DB_PASSWORD}"
       volumes:
         - oracle-data:/opt/oracle/oradata
       healthcheck:
@@ -26,9 +26,9 @@
         - "9090:9090"
       environment:
         SPRING_PROFILES_ACTIVE: uat
-        DB_URL: "{DB_URL}"
-        DB_USERNAME: "{DB_USERNAME}"
-        DB_PASSWORD: "{DB_PASSWORD}"
+        DB_URL: "${DB_URL}"
+        DB_USERNAME: "${DB_USERNAME}"
+        DB_PASSWORD: "${DB_PASSWORD}"
       depends_on:
         oracle:
           condition: service_healthy
