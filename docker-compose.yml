@@ -25,7 +25,7 @@
       ports:
         - "9090:9090"
       environment:
-        SPRING_PROFILES_ACTIVE: uat
+        SPRING_PROFILES_ACTIVE: "uat"
         DB_URL: "${DB_URL}"
         DB_USERNAME: "${DB_USERNAME}"
         DB_PASSWORD: "${DB_PASSWORD}"
